@@ -8,6 +8,7 @@
 -export([prepare_filling/1, fill_pattern/2, prepare_matching/1, match_vars/2, same_common_vars/2]).
 -export([shared_access_token/4]).
 -export([form_encode/1, decode_and_downlink/3]).
+-export([raise_failed/2]).
 
 -include("lorawan_db.hrl").
 
@@ -22,9 +23,14 @@ is_pattern(Pattern) ->
         N when N > 0 -> true
     end.
 
-pattern_for_cowboy(URI) ->
+pattern_for_cowboy(Empty)
+        when Empty == undefined; Empty == <<>> ->
+    undefined;
+pattern_for_cowboy(<<"/", _/binary>>=URI) ->
     % convert our pattern to cowboy pattern
-    re:replace(URI, "{([^}])}", ":\\1", [{return, binary}]).
+    re:replace(URI, "{([^}]+)}", ":\\1", [{return, binary}]);
+pattern_for_cowboy(_Error) ->
+    error.
 
 -type fill_pattern_t() :: 'undefined' | {binary(), [{integer(), integer()}]}.
 -spec prepare_filling('undefined' | binary() | [binary()]) -> fill_pattern_t() | [fill_pattern_t()].
@@ -178,6 +184,25 @@ decode(<<"json">>, Msg) ->
             {error, json_syntax_error}
     end.
 
+raise_failed(ConnId, {Error, Args}) ->
+    lorawan_utils:throw_error({connector, ConnId}, {Error, Args}),
+    append_failed(ConnId, Error);
+raise_failed(ConnId, Error) ->
+    lorawan_utils:throw_error({connector, ConnId}, Error),
+    append_failed(ConnId, Error).
+
+append_failed(ConnId, Error) ->
+    mnesia:transaction(
+        fun() ->
+            [Rec] = mnesia:read(connectors, ConnId, write),
+            mnesia:write(connectors, append_failed0(Rec, atom_to_binary(Error, latin1)), write)
+        end).
+
+append_failed0(#connector{failed=Failed}=Conn, Error) when is_list(Failed) ->
+    Conn#connector{failed=[Error|Failed]};
+append_failed0(Conn, Error) ->
+    Conn#connector{failed=[Error]}.
+
 
 -include_lib("eunit/include/eunit.hrl").
 
@@ -201,7 +226,9 @@ pattern_test_()-> [
     ?_assertEqual(#{devaddr => <<"00112233">>},
         match_pattern(<<"00112233/trailing/data">>, prepare_matching(<<"{devaddr}/#">>))),
     ?_assertEqual(#{devaddr => <<"00112233">>},
-        match_pattern(<<"/leading/data/00112233">>, prepare_matching(<<"#/{devaddr}">>)))].
+        match_pattern(<<"/leading/data/00112233">>, prepare_matching(<<"#/{devaddr}">>))),
+    ?_assertEqual(<<"/without/template">>, pattern_for_cowboy(<<"/without/template">>)),
+    ?_assertEqual(<<"/some/:template">>, pattern_for_cowboy(<<"/some/{template}">>))].
 
 
 www_form_test_()-> [

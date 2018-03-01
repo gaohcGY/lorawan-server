@@ -4,7 +4,7 @@ Open-source LoRaWAN Server that integrates both the network-server and the appli
 This is useful for application providers that operate their own LoRaWAN network,
 or for device and application developers.
 
-**This is unstable release 0.5.0.** Migrating to this version will preserve the
+**This is release 0.5.3.** Migrating to this version will preserve the
 Device/Node addresses and security keys, but will delete many ADR parameters, which
 got moved to the Profile settings. You are required to review and complete
 the configuration before connecting any gateway or device!
@@ -23,6 +23,10 @@ The server:
  * Invokes internal modules with application logic. It provides examples for:
    * [Semtech/IMST LoRaMote](http://webshop.imst.de/loramote-lora-evaluation-tool.html)
    * [Microchip LoRa(TM) Technology Mote](http://www.microchip.com/Developmenttools/ProductDetails.aspx?PartNO=dm164138)
+     (via an [external plug-in](https://github.com/gotthardp/lorawan-server-demoapp))
+ * Automatically parses well-known payload formats. It currently supports:
+   * [Cayenne Low Power Payload](https://github.com/myDevicesIoT/cayenne-docs/blob/master/docs/LORA.md#cayenne-low-power-payload)
+ * Stores uplink data directly to a MongoDB collection.
  * Invokes external applications. It currently supports connections via:
    * WebSocket protocol [RFC6455](https://tools.ietf.org/rfc/rfc6455.txt)
    * HTTP/1.1 and HTTP/2 protocol (REST API)
@@ -132,6 +136,8 @@ To implement an internal application you need to create a new module implementin
 
 ### Troubleshooting
 [![Build Status](https://travis-ci.org/gotthardp/lorawan-server.svg?branch=master)](https://travis-ci.org/gotthardp/lorawan-server)
+
+First of all, please read the documentation.
 
 If the server doesn't do what you expect, please review the server logs and consult the
 [Troubleshooting Instructions](doc/Troubleshooting.md) for the most common problems.

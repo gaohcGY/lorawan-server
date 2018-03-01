@@ -168,6 +168,8 @@ For example:
 ]}].
 ```
 
+To disable the plain HTTP web-admin, set `{http_admin_listen, undefined}`.
+
 Review the `lorawan-server/lib/lorawan_server-<VERSION>/priv/admin/admin.js` with the
 admin configuration:
  * You may need to obtain a [Google API](https://console.developers.google.com) key for
@@ -285,8 +287,7 @@ content.
 
 On the Debian Linux and its clones like Raspbian you can use the .deb package.
 
-Build the Debian package bu running `make dpkg`. It will request your `root`
-password and then create a package
+Build the Debian package bu running `make release dpkg`. This will create
 `lorawan-server/_build/default/rel/lorawan-server/lorawan-server_<VERSION>.deb`.
 
 You can then install the package by:

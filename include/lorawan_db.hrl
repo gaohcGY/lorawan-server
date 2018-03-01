@@ -49,7 +49,7 @@
     max_datr :: number(),
     rxwin_init :: rxwin_config(),
     init_chans :: intervals(),
-    cflist :: 'undefined' | [integer()]}).
+    cflist :: 'undefined' | [{number(), integer(), integer()}]}).
 
 -record(gateway, {
     mac :: binary(),
@@ -113,9 +113,9 @@
     adr_flag :: 0..1, % device supports
     adr_set :: 'undefined' | adr_config(), % auto-calculated
     adr_use :: adr_config(), % used
-    adr_failed=[] :: [atom()], % last request failed
+    adr_failed=[] :: [binary()], % last request failed
     rxwin_use :: rxwin_config(), % used
-    rxwin_failed=[] :: [atom()], % last request failed
+    rxwin_failed=[] :: [binary()], % last request failed
     last_qs :: [{integer(), integer()}], % list of {RSSI, SNR} tuples
     average_qs :: 'undefined' | {number(), number()}, % average RSSI and SNR
     devstat_time :: 'undefined' | calendar:datetime(),
@@ -136,6 +136,7 @@
     subscribe :: 'undefined' | binary(),
     received :: 'undefined' | binary(),
     enabled :: boolean(),
+    failed=[] :: [binary()],
     client_id :: 'undefined' | binary(),
     auth :: binary(),
     name :: 'undefined' | binary(),
@@ -147,8 +148,10 @@
 
 -record(handler, {
     app :: binary(),
-    fields :: [binary()],
+    uplink_fields :: [binary()],
+    payload :: 'undefined' | binary(),
     parse_uplink :: 'undefined' | {binary(), fun()},
+    event_fields :: [binary()],
     parse_event :: 'undefined' | {binary, fun()},
     build :: 'undefined' | {binary(), fun()},
     downlink_expires :: binary()}).

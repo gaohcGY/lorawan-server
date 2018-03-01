@@ -46,22 +46,29 @@ ingest_frame0(<<2#000:3, _:5,
 ingest_frame0(<<MType:3, _:5,
         DevAddr0:4/binary, ADR:1, ADRACKReq:1, ACK:1, _RFU:1, FOptsLen:4,
         FCnt:16/little-unsigned-integer, FOpts:FOptsLen/binary, Body/binary>> = Msg, MIC)
-        when MType == 2#010; MType == 2#100 ->
+        when MType == 2#010; MType == 2#011; MType == 2#100; MType == 2#101 ->
     <<Confirm:1, _:2>> = <<MType:3>>,
     DevAddr = reverse(DevAddr0),
     {Port, FRMPayload} = case Body of
         <<>> -> {undefined, <<>>};
         <<FPort:8, FPayload/binary>> -> {FPort, FPayload}
     end,
-    Frame = #frame{conf=Confirm, devaddr=DevAddr, adr=ADR, adr_ack_req=ADRACKReq, ack=ACK, fcnt=FCnt, port=Port},
+    ingest_data_frame(MType, Msg, FOpts, FRMPayload, MIC,
+        #frame{conf=Confirm, devaddr=DevAddr, adr=ADR, adr_ack_req=ADRACKReq, ack=ACK, fcnt=FCnt, port=Port});
+ingest_frame0(Msg, _MIC) ->
+    lager:debug("Unknown frame: ~p", [Msg]),
+    {error, unknown_frame}.
 
+ingest_data_frame(MType, Msg, FOpts, FRMPayload, MIC,
+        #frame{devaddr=DevAddr, fcnt=FCnt, port=Port}=Frame)
+        when MType == 2#010; MType == 2#100 ->
     case accept_node_frame(DevAddr, FCnt) of
         {ok, Fresh, {Network, Profile, Node}} ->
             case aes_cmac:aes_cmac(Node#node.nwkskey,
                     <<(b0(MType band 1, DevAddr, Node#node.fcntup, byte_size(Msg)))/binary, Msg/binary>>, 4) of
                 MIC ->
                     case Port of
-                        0 when FOptsLen == 0 ->
+                        0 when byte_size(FOpts) == 0 ->
                             Data = cipher(FRMPayload, Node#node.nwkskey, MType band 1, DevAddr, Node#node.fcntup),
                             {Fresh, {Network, Profile, Node},
                                 Frame#frame{fopts=reverse(Data), data= <<>>}};
@@ -77,12 +84,13 @@ ingest_frame0(<<MType:3, _:5,
             end;
         {error, ignored_node} ->
             {ignore, Frame};
-        {error, Error, Attr} ->
-            {error, {node, DevAddr}, Error, Attr}
+        {error, Error, Args} ->
+            lorawan_utils:throw_error({node, DevAddr}, Error, Args),
+            {ignore, Frame}
     end;
-ingest_frame0(Msg, _MIC) ->
-    lager:debug("Bad frame: ~p", [Msg]),
-    {error, bad_frame}.
+ingest_data_frame(MType, _Msg, _FOpts, _FRMPayload, _MIC, #frame{devaddr=DevAddr}=Frame) ->
+    lager:error("~p Unexpected mtype ~p", [binary_to_hex(DevAddr), MType]),
+    {ignore, Frame}.
 
 handle_join(#device{deveui=DevEUI, profile=ProfID}=Device, DevNonce) ->
     case mnesia:read(profiles, ProfID, read) of
@@ -245,7 +253,8 @@ check_fcnt({Network, Profile, Node}, FCnt) ->
             reset_node(Node#node.devaddr),
             % works for 16b only since we cannot distinguish between reset and 32b rollover
             {ok, uplink, Node#node{fcntup = FCnt, fcntdown=0,
-                adr_use=initial_adr(Network), rxwin_use=Network#network.rxwin_init,
+                adr_use=initial_adr(Network), adr_failed=[],
+                rxwin_use=Network#network.rxwin_init, rxwin_failed=[],
                 last_reset=calendar:universal_time(), devstat_fcnt=undefined, last_qs=[]}};
         Profile#profile.fcnt_check == 3 ->
             % checks disabled
@@ -396,13 +405,18 @@ encode_accept(#network{netid=NetID, rx1_delay=RxDelay, cflist=CFList}, #device{a
 encode_cflist(List) when is_list(List), length(List) > 0, length(List) =< 5 ->
     FreqList =
         lists:foldr(
-            fun(Freq, Acc) ->
-                <<(trunc(Freq*10000)):24/little-unsigned-integer, Acc/binary>>
+            fun
+                ({Freq, _, _}, Acc) -> encode_cf(Freq, Acc);
+                % backwards compatibility
+                (Freq, Acc) -> encode_cf(Freq, Acc)
             end,
             <<>>, List),
     padded(16, FreqList);
 encode_cflist(_Else) ->
     <<>>.
+
+encode_cf(Freq, Acc) ->
+    <<(trunc(Freq*10000)):24/little-unsigned-integer, Acc/binary>>.
 
 encode_unicast({_Network, #profile{adr_mode=ADR},
         #node{devaddr=DevAddr, nwkskey=NwkSKey, appskey=AppSKey}}, ACK, FOpts, TxData) ->

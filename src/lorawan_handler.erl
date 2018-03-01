@@ -36,6 +36,9 @@ idle(cast, {frame, {MAC, RxQ, _}, <<2#000:3, _/bitstring>>=PHYPayload}, Data) ->
             end;
         ignore ->
             {next_state, drop, Data};
+        {error, Error} ->
+            lorawan_utils:throw_error(server, Error),
+            {next_state, drop, Data};
         {error, Object, Error} ->
             lorawan_utils:throw_error(Object, Error),
             {next_state, drop, Data};
@@ -84,6 +87,9 @@ idle(cast, {frame, {MAC, RxQ, _}, PHYPayload}, Data) ->
             end;
         {ignore, Frame} ->
             {next_state, log_only, Frame};
+        {error, Error} ->
+            lorawan_utils:throw_error(server, Error),
+            {next_state, drop, Data};
         {error, Object, Error} ->
             lorawan_utils:throw_error(Object, Error),
             {next_state, drop, Data};
@@ -229,6 +235,8 @@ invoke_handler(Fun, {_, #profile{app=App}, _}=Subject, Params) ->
         undefined ->
             % if it's not internal, then it must be external
             apply(lorawan_application_backend, Fun, [Subject|Params]);
+        {_, Module} ->
+            invoke_handler2(Module, Fun, [Subject|Params]);
         Module ->
             invoke_handler2(Module, Fun, [Subject|Params])
     end.

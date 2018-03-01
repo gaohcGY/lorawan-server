@@ -20,10 +20,10 @@ To create a new connector you set:
    - `http://` for HTTP POST or `https://` for HTTP/SSL
    - `mqtt://` for MQTT or `mqtts://` for MQTT/SSL
    - `amqp://` for AMQP or `amqp://` for AMQP/SSL
- - **Published Uplinks**, which is a server pattern for constructing the publication
+ - **Publish Uplinks**, which is a server pattern for constructing the publication
    topic for uplink messages, e.g. `out/{devaddr}`. This can be used to include
    the actual DevEUI, DevAddr or other data field in the message topic.
- - **Published Events**, which is a server pattern for constructing the publication
+ - **Publish Events**, which is a server pattern for constructing the publication
    topic for event messages.
  - **Subscribe**, which is a topic to be subscribed. It may include broker specific
    wilcards, e.g. `in/#`. The MQTT broker will then send messages with a matching
@@ -32,6 +32,11 @@ To create a new connector you set:
    messages, e.g. `in/{devaddr}`. This can be used to obtain a DevEUI, DevAddr or
    a device group that shall receive a given downlink.
  - **Enabled** flag that allows you to temporarily disable an existing connector.
+ - **Failed** flag indicates what has failed. The Event list includes more
+   details.
+   - **badarg** when some of connector parameters is bad
+   - **network** when the destination server cannot be reached
+   - **topic** when the target broker configuration is wrong
 
 On the Authentication tab:
  - **Client ID** is the MQTT parameter
@@ -89,6 +94,10 @@ To create a web socket connector you set:
  - **URI** to `ws:` (with no hostname)
  - **Publish Uplinks** to a URL pattern starting with a slash, e.g. '/ws/uplink/{devaddr}'
  - **Publish Events** to another URL pattern, e.g. '/ws/events/{devaddr}'
+
+The pattern may contain uplink Fields of the corresponding [Handler](Handlers.md),
+mainly `{deveui}`, `{devaddr}` or `{app}` corresponding to a group of devices with
+the same application (Handler name).
 
 To connect to the WebSocket, then open URL to the path you defined, i.e.
 `ws://server:8080/ws/uplink/<DevAddr>` or `ws://server:8080/ws/events/<DevAddr>`.
@@ -186,3 +195,17 @@ To send a downlink message to one of your devices do e.g.
 ```bash
 mosquitto_pub -h 127.0.0.1 -p 1883 -t 'in/00112233' -m '{"data":"00"}' -u 'user' -P 'pass'
 ```
+
+
+## MongoDB
+
+You can store the received uplinks directly to a [MongoDB](https://www.mongodb.com).
+
+Open the lorawan-server web-administration and create a Backend Connector:
+ - **Format** is ignored, but should be set to *JSON*.
+ - **URI** defines the target host `mongodb://host:port` or `mongodb://host1:port,host2:port`
+   to list replica pairs/sets.
+ - **Publish Uplinks** and **Publish Events** must be in the format *Database*/*Collection*.
+   The *Database* is optional; if not provided, `local` is used by default.
+
+Authentication is not supported.

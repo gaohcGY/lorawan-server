@@ -51,7 +51,7 @@ For the status:
  - **Last Alive** contains a timestamp of the last received pull request. A gateway is
    considered dead if it didn't sent anything for more than 60 seconds.
  - **Last Report** shows a timestamp of the last status report
- - **Delays** graph shows network (LAN) delay between the gateway and the server
+ - **Network Delay** graph shows network (LAN) delay between the gateway and the server
    measured during the [`PULL_RESP`](https://github.com/Lora-net/packet_forwarder/blob/master/PROTOCOL.TXT#L274)
    sequence. Note this requires packet_forwarder v3.0 or higher.
  - **Transmissions** graph shows how much did the gateway transmit in past hour.
@@ -67,7 +67,8 @@ The server can handle one or more networks. Each Network configuration covers:
  * LoRaWAN Regional Parameters, including additional frequencies (channels)
 
 To correctly define the Regional Parameters you should review the specification
-"LoRaWAN Regional Parameters v1.0.2".
+"LoRaWAN Regional Parameters v1.0.2" or the suggested
+[Default Regional Configuration](Regions.md) for your region.
 
 On the General tab you can set:
  - **Name** of the network.
@@ -97,20 +98,32 @@ On the ADR tab you can set the initial parameters of your devices:
    "Data Rate and End-device Output Power encoding" section.
  - **Max Power** defines the first item in the "TX Power Table"
  - **Min Power** defines the last item in the "TX Power Table"
- - **Max Data Rate** defines the last (lowest SF) item in the "TX Data rate table"
- - **Initial RX1 DR offset** defines the offset between the uplink data rate and
+ - **Max Data Rate** defines the highest DR (lowest SF) supported by channels in
+   this network. Additional **Channels** may specify a different value.
+ - **Initial RX1 DR Offset** defines the offset between the uplink data rate and
    the downlink data rate used to communicate with the end-device on the first
    reception slot (RX1).
  - **Initial RX2 DR** defines the data rate for the second reception slot (RX2).
    See the "Receive windows" section.
  - **Initial RX2 Freq** defines the default frequency in the RX2 receive window.
 
+The **Max Data Rate** is not always he last item (lowest SF) in the
+"TX Data rate table". Not all channels (frequencies) are allowed to use all data
+rates, for example in EU868 the default channels use SF12/125 to SF7/125 only.
+The SF7/250 is allowed for the 867.3 MHz channel only and FSK for 867.7 MHz only.
+
 ### Channels
 
 On the Channels tab you can set:
- - **Initial Channels** enabled in your devices.
- - **Channels** define a list of additional channel frequencies sent to the device
-   during Join (CFList).
+ - **Initial Channels** enabled in your devices. This stall include a
+   comma-separated list of intervals, e.g. `0-2` for EU or `0-71` for US.
+ - **Channels** define a list of additional channels sent to the device during
+   Join (CFList)
+   - **Frequency (MHz)** defines the channel frequency
+   - **Min Data Rate** defines the lowest data rate allowed on this channel.
+     If not specified, equals to 0.
+   - **Max Data Rate** defines the highest data rate allowed on this channel.
+     If not specified, equals to the global value on the **ADR** tab.
 
 ## Multicast Channels
 
@@ -136,7 +149,7 @@ Each record contains
  - **First Occurred** timestamp
  - **Last Occurred** timestamp, which gets updated everytime this event occurs.
  - **Count** of occurrences, which gets increased by 1.
- - **Entity** concerned by the event: server, gateway, device or node.
+ - **Entity** concerned by the event: server, gateway, device, node, connector.
  - **EId**, which is an identifier of the concerned entity.
  - **Text** and **Args** of the event.
 

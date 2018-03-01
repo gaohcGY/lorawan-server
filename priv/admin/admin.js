@@ -144,6 +144,8 @@ myApp.config(['NgAdminConfigurationProvider', function (nga) {
         nga.field('group'),
         nga.field('desc').label('Description'),
         nga.field('ip_address.ip').label('IP Address'),
+        nga.field('dwell', 'float').label('Dwell [%]')
+            .map(function(value, entry){ return first(value, 'hoursum')/36000; }),
         nga.field('last_alive', 'datetime').label('Last Alive'),
         nga.field('health_decay', 'number').label('Status')
             .template(function(entry){ return healthIndicator(entry.values) })
@@ -178,13 +180,13 @@ myApp.config(['NgAdminConfigurationProvider', function (nga) {
             .editable(false),
         nga.field('last_alive', 'datetime').label('Last Alive'),
         nga.field('last_report', 'datetime').label('Last Report'),
-        nga.field('mac', 'template').label('Delays')
+        nga.field('mac', 'template').label('Network Delay')
             .template('<pgraph value="value"></pgraph>'),
         nga.field('mac', 'template').label('Transmissions')
             .template('<tgraph value="value"></tgraph>')
     ]);
     gateways.creationView().template(createWithTabsTemplate([
-        {name:"General", min:0, max:8}
+        {name:"General", min:0, max:7}
     ]));
     gateways.editionView().fields(gateways.creationView().fields());
     gateways.editionView().template(editWithTabsTemplate([
@@ -213,7 +215,7 @@ myApp.config(['NgAdminConfigurationProvider', function (nga) {
             .map(format_bitstring)
             .transform(parse_bitstring)
             .attributes({ placeholder: 'e.g. 0:3' })
-            .validation({ pattern: '([A-Fa-f0-9]{2})*:[0-9]+' }),
+            .validation({ pattern: '([A-Fa-f0-9]{2})*:[0-9]+', validator: validate_bitstring }),
         nga.field('region', 'choice')
             .choices([
                 { value: 'EU868', label: 'EU 863-870MHz' },
@@ -276,7 +278,7 @@ myApp.config(['NgAdminConfigurationProvider', function (nga) {
                     return [];
             })
             .validation({ required: true }),
-        nga.field('rxwin_init.rx1_dr_offset', 'number').label('Initial RX1 DR offset')
+        nga.field('rxwin_init.rx1_dr_offset', 'number').label('Initial RX1 DR Offset')
             .validation({ required: true })
             .defaultValue(0),
         nga.field('rxwin_init.rx2_dr', 'choice').label('Initial RX2 DR')
@@ -294,8 +296,11 @@ myApp.config(['NgAdminConfigurationProvider', function (nga) {
             .attributes({ placeholder: 'e.g. 0-2' })
             .validation({ required: true, pattern: '[0-9]+(-[0-9]+)?(,[ ]*[0-9]+(-[0-9]+)?)*' }),
         nga.field('cflist', 'embedded_list').label('Channels')
-            .targetFields([ // which comment fields to display in the datagrid / form
+            .targetFields([
                 nga.field('freq', 'float').label('Frequency (MHz)')
+                    .validation({ required: true }),
+                nga.field('min_datr', 'number').label('Min Data Rate'),
+                nga.field('max_datr', 'number').label('Max Data Rate')
             ])
     ])
     .prepare(['$http', function($http) {
@@ -406,7 +411,7 @@ myApp.config(['NgAdminConfigurationProvider', function (nga) {
             .attributes({ placeholder: 'e.g. 0-2' })
             .validation({ pattern: '[0-9]+(-[0-9]+)?(,[ ]*[0-9]+(-[0-9]+)?)*' }),
 
-        nga.field('rxwin_set.rx1_dr_offset', 'number').label('Set RX1 DR offset'),
+        nga.field('rxwin_set.rx1_dr_offset', 'number').label('Set RX1 DR Offset'),
         nga.field('rxwin_set.rx2_dr', 'choice').label('Set RX2 DR')
             .choices(function(entry) {
                 if(entry.values.network)
@@ -602,9 +607,14 @@ myApp.config(['NgAdminConfigurationProvider', function (nga) {
             .validation({ pattern: '[0-9]+(-[0-9]+)?(,[ ]*[0-9]+(-[0-9]+)?)*' }),
         nga.field('adr_use.chans').label('Used Channels')
             .editable(false),
-        nga.field('adr_failed', 'choices').label('ADR Failed'),
+        nga.field('adr_failed', 'choices').label('ADR Failed')
+            .choices([
+                { value: 'power', label: 'power' },
+                { value: 'data_rate', label: 'data_rate' },
+                { value: 'channel_mask', label: 'channel_mask' }
+            ]),
 
-        nga.field('rxwin_use.rx1_dr_offset', 'number').label('Used RX1 DR offset')
+        nga.field('rxwin_use.rx1_dr_offset', 'number').label('Used RX1 DR Offset')
             .editable(false),
         nga.field('rxwin_use.rx2_dr', 'choice').label('Used RX2 DR')
             .choices(function(entry) {
@@ -617,7 +627,12 @@ myApp.config(['NgAdminConfigurationProvider', function (nga) {
         nga.field('rxwin_use.rx2_freq', 'float').label('Used RX2 Freq (MHz)')
             .editable(false),
 
-        nga.field('rxwin_failed', 'choices').label('RX Change Failed'),
+        nga.field('rxwin_failed', 'choices').label('RX Change Failed')
+            .choices([
+                { value: 'dr_offset', label: 'dr_offset' },
+                { value: 'rx2_data_rate', label: 'rx2_data_rate' },
+                { value: 'channel', label: 'channel' }
+            ]),
         nga.field('devaddr', 'template').label('RX')
             .template('<rgraph value="value"></rgraph>'),
         nga.field('devaddr', 'template').label('RX Quality')
@@ -671,7 +686,7 @@ myApp.config(['NgAdminConfigurationProvider', function (nga) {
         nga.field('app').label('Application'),
         nga.field('devaddr').label('DevAddr')
             .template(function(entry) {
-                return "<a href='/admin/#nodes/edit/" + entry.values.devaddr + "'>" + entry.values.devaddr + "</a>";
+                return "<a href='#/nodes/edit/" + entry.values.devaddr + "'>" + entry.values.devaddr + "</a>";
             }),
         nga.field('mac').label('MAC')
             .template(function(entry) {
@@ -706,12 +721,14 @@ myApp.config(['NgAdminConfigurationProvider', function (nga) {
     // ---- connectors
     connectors.listView().fields([
         nga.field('connid').label('Name').isDetailLink(true),
-        nga.field('enabled', 'boolean'),
-        nga.field('app').label('Application'),
+        nga.field('app', 'reference').label('Application')
+            .targetEntity(handlers)
+            .targetField(nga.field('app')),
         nga.field('uri').label('URI'),
         nga.field('publish_uplinks'),
-        nga.field('publish_events'),
-        nga.field('received').label('Received Topic')
+        nga.field('received').label('Received Topic'),
+        nga.field('enabled', 'boolean'),
+        nga.field('failed', 'choices')
     ]);
     connectors.creationView().fields([
         nga.field('connid').label('Connector Name')
@@ -724,13 +741,19 @@ myApp.config(['NgAdminConfigurationProvider', function (nga) {
             .validation({ required: true }),
         nga.field('uri').label('URI')
             .attributes({ placeholder: 'e.g. mqtt://server:8883' })
-            .validation({ required: true, pattern: '^(((amqp|mqtt|http)s?:\/)|ws:)\/[^\/?#]+[^?#]*' }),
+            .validation({ required: true, pattern: '^(((amqp|mqtt|http)s?:\/\/[^\/?#]+[^?#]*)|ws:|mongodb:\/\/[^\/?#]+)' }),
         nga.field('publish_uplinks'),
         nga.field('publish_events'),
         nga.field('subscribe').label('Subscribe'),
         nga.field('received').label('Received Topic'),
         nga.field('enabled', 'boolean')
             .validation({ required: true }),
+        nga.field('failed', 'choices')
+            .choices([
+                { value: 'badarg', label: 'badarg' },
+                { value: 'network', label: 'network' },
+                { value: 'topic', label: 'topic' }
+            ]),
         // Authentication
         nga.field('client_id').label('Client ID'),
         nga.field('auth', 'choice')
@@ -741,18 +764,18 @@ myApp.config(['NgAdminConfigurationProvider', function (nga) {
         nga.field('name'),
         nga.field('pass').label('Password/Key'),
         nga.field('certfile', 'file').label('User Certificate')
-            .uploadInformation({'url': 'upload'}),
+            .uploadInformation({'url': '/api/upload'}),
         nga.field('keyfile', 'file').label('Private Key')
-            .uploadInformation({'url': 'upload'})
+            .uploadInformation({'url': '/api/upload'})
     ]);
     connectors.creationView().template(createWithTabsTemplate([
-        {name:"General", min:0, max:9},
-        {name:"Authentication", min:9, max:15}
+        {name:"General", min:0, max:10},
+        {name:"Authentication", min:10, max:16}
     ]));
     connectors.editionView().fields(connectors.creationView().fields());
     connectors.editionView().template(editWithTabsTemplate([
-        {name:"General", min:0, max:9},
-        {name:"Authentication", min:9, max:15}
+        {name:"General", min:0, max:10},
+        {name:"Authentication", min:10, max:16}
     ]));
     // add to the admin application
     admin.addEntity(connectors);
@@ -760,13 +783,14 @@ myApp.config(['NgAdminConfigurationProvider', function (nga) {
     // ---- handlers
     handlers.listView().fields([
         nga.field('app').label('Application').isDetailLink(true),
-        nga.field('fields', 'choices'),
+        nga.field('uplink_fields', 'choices'),
+        nga.field('payload'),
         nga.field('downlink_expires').label('D/L Expires')
     ]);
     handlers.creationView().fields([
         nga.field('app').label('Application')
             .validation({ required: true }),
-        nga.field('fields', 'choices').label('Uplink Fields')
+        nga.field('uplink_fields', 'choices')
             .choices([
                 { value: 'app', label: 'app' },
                 { value: 'devaddr', label: 'devaddr' },
@@ -782,9 +806,25 @@ myApp.config(['NgAdminConfigurationProvider', function (nga) {
                 { value: 'datr', label: 'datr' },
                 { value: 'codr', label: 'codr' },
                 { value: 'best_gw', label: 'best_gw' },
+                { value: 'mac', label: 'mac' },
+                { value: 'lsnr', label: 'lsnr' },
+                { value: 'rssi', label: 'rssi' },
                 { value: 'all_gw', label: 'all_gw' }
             ]),
+        nga.field('payload', 'choice')
+            .choices([
+                { value: 'cayenne', label: 'Cayenne LPP' }
+            ]),
         nga.field('parse_uplink', 'text'),
+        nga.field('event_fields', 'choices')
+            .choices([
+                { value: 'app', label: 'app' },
+                { value: 'event', label: 'event' },
+                { value: 'devaddr', label: 'devaddr' },
+                { value: 'deveui', label: 'deveui' },
+                { value: 'appargs', label: 'appargs' },
+                { value: 'datetime', label: 'datetime' }
+            ]),
         nga.field('parse_event', 'text'),
         nga.field('build', 'text').label('Build Downlink'),
         nga.field('downlink_expires', 'choice').label('D/L Expires')
@@ -800,9 +840,11 @@ myApp.config(['NgAdminConfigurationProvider', function (nga) {
             .targetReferenceField('app')
             .targetFields([
                 nga.field('connid').label('Name').isDetailLink(true),
+                nga.field('format', 'choice')
+                    .choices(format_choices),
+                nga.field('uri').label('URI'),
                 nga.field('enabled', 'boolean'),
-                nga.field('format', 'choice'),
-                nga.field('uri').label('URI')
+                nga.field('failed', 'choices')
             ])
         ]);
     handlers.editionView().fields(handlers.creationView().fields());
@@ -821,7 +863,7 @@ myApp.config(['NgAdminConfigurationProvider', function (nga) {
         nga.field('eid')
             .template(function(entry){
                 if (entry.values.eid != null) {
-                    return "<a href='/admin/#" + entry.values.entity + "s/edit/" + entry.values.eid + "'>" +
+                    return "<a href='#/" + entry.values.entity + "s/edit/" + entry.values.eid + "'>" +
                         entry.values.eid + "</a>";
                 }
             }),
@@ -869,6 +911,8 @@ myApp.config(['NgAdminConfigurationProvider', function (nga) {
             .fields([
                 nga.field('mac').label('MAC').isDetailLink(true),
                 nga.field('ip_address.ip').label('IP Address'),
+                nga.field('dwell', 'float').label('Dwell [%]')
+                    .map(function(value, entry){ return first(value, 'hoursum')/36000; }),
                 nga.field('last_alive', 'datetime'),
                 nga.field('health_decay', 'number').label('Status')
                     .template(function(entry){ return healthIndicator(entry.values) })
@@ -902,7 +946,7 @@ myApp.config(['NgAdminConfigurationProvider', function (nga) {
                 nga.field('eid')
                     .template(function(entry){
                         if (entry.values.eid != null) {
-                            return "<a href='/admin/#" + entry.values.entity + "s/edit/" + entry.values.eid + "'>" +
+                            return "<a href='#/" + entry.values.entity + "s/edit/" + entry.values.eid + "'>" +
                                 entry.values.eid + "</a>";
                         }
                     }),
@@ -918,7 +962,7 @@ myApp.config(['NgAdminConfigurationProvider', function (nga) {
                 nga.field('app').label('Application'),
                 nga.field('devaddr').label('DevAddr')
                     .template(function(entry) {
-                        return "<a href='/admin/#nodes/edit/" + entry.values.devaddr + "'>" + entry.values.devaddr + "</a>";
+                        return "<a href='#/nodes/edit/" + entry.values.devaddr + "'>" + entry.values.devaddr + "</a>";
                     }),
                 nga.field('mac').label('MAC')
                     .template(function(entry) {
@@ -1037,6 +1081,14 @@ function format_bitstring(value, entry) {
         return entry["subid.val"] + ":" + entry["subid.len"];
     else
         return null;
+}
+function validate_bitstring(value) {
+    if(value && value.length > 0)
+    {
+        var parts = value.split(':', 2);
+        if(+parts[1] < 0 || +parts[1] > 25)
+            throw new Error ('SubID must be less than 25 bits');
+    }
 }
 function parse_bitstring(value, entry) {
     if(value && value.length > 0)
@@ -1208,7 +1260,7 @@ return {
         entry: '='
     },
     link: function($scope) {
-        if($scope.entry.values.entity == "node" && $scope.entry.values.entity == "unknown_devaddr")
+        if($scope.entry.values.entity == "node" && $scope.entry.values.text == "unknown_devaddr")
             $scope.ShowIgnore = true;
 
         $scope.addIgnored = function() {
@@ -1380,11 +1432,10 @@ return {
             $scope.prChartObject.type = "LineChart";
             $scope.prChartObject.options = {
                 "vAxes": {
-                    0: {"title": 'Delay [ms]', "minValue": 0, "maxValue": 1500},
+                    0: {"title": 'Network Delay [ms]', "minValue": 0, "maxValue": 100},
                 },
                 "series": {
-                    0: {"targetAxisIndex": 0},
-                    1: {"targetAxisIndex": 0}
+                    0: {"targetAxisIndex": 0}
                 },
                 "chartArea": {
                     "top": 0, "bottom": "10%",
@@ -1429,7 +1480,7 @@ return {
             $scope.txChartObject.type = "LineChart";
             $scope.txChartObject.options = {
                 "vAxes": {
-                    0: {"title": 'Tx Time [ms]', "minValue": 0, "maxValue": 3000},
+                    0: {"title": 'Tx Time [ms]', "minValue": 0, "maxValue": 2000},
                     1: {"title": 'Tx in Hour [ms]', "minValue": 0, "maxValue": 1}
                 },
                 "series": {

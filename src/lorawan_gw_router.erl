@@ -45,7 +45,8 @@ value_or_default(Num, _Def) when is_number(Num) -> Num;
 value_or_default(_Num, Def) -> Def.
 
 init([]) ->
-    timer:send_interval(60000, submit_stats),
+    {ok, Interval} = application:get_env(lorawan_server, server_stats_interval),
+    timer:send_interval(Interval*1000, submit_stats),
     {ok, #state{gateways=dict:new(), recent=dict:new(), request_cnt=0, error_cnt=0}}.
 
 handle_call(_Request, _From, State) ->
@@ -203,12 +204,6 @@ append_delays(NwkDelays, Delay) ->
     end.
 
 handle_report(MAC, S) ->
-    if
-        S#stat.rxok < S#stat.rxnb ->
-            lager:debug("Gateway ~s had ~B uplink CRC errors", [lorawan_utils:binary_to_hex(MAC), S#stat.rxnb-S#stat.rxok]);
-        true ->
-            ok
-    end,
     if
         S#stat.rxfw < S#stat.rxok ->
             lorawan_utils:throw_warning({gateway, MAC}, {uplinks_lost, S#stat.rxok-S#stat.rxfw});

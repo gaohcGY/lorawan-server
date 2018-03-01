@@ -110,6 +110,12 @@ warning. It may be because:
  * No downlink frames delivered (see above)
  * Faulty device is periodically re-starting
 
+### not_semtech_mote
+
+The server is configured to use the *semtech-mote* application, but your device
+sent some other data. Make sure your firmware uses the
+[supported format](https://github.com/Lora-net/LoRaMac-node/blob/master/src/apps/LoRaMac/classA/LoRaMote/main.c#L207).
+
 ### prerequisite_failed
 
 This is reported when the lorawan-server is started with older Erlang/OTP. At
@@ -133,12 +139,6 @@ device a downlink shall be sent. You have two options:
 The problem is the Lorank8 proprietary message format. In your gateway config
 you likely have `stat_format` set to `idee_concise` or `idee_verbose`. You need
 to change `stat_format` to `semtech` to get this working.
-
-### Gateway *XYZ* had *n* uplink CRC errors
-
-This error is not related to any of the received frames. It means the gateway
-received some frame it couldn't decode. It is very often some noise or some
-very distant device. Nothing to worry about.
 
 ### Lost admin password
 

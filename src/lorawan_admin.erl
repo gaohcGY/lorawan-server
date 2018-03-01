@@ -143,28 +143,29 @@ check_margin(#node{devstat=[{_Time, _Battery, Margin, MaxSNR}|_]}) ->
 check_margin(#node{}) ->
     undefined.
 
-check_adr(#node{adr_failed=[]}) ->
+check_adr(#node{adr_failed=Failed}) when Failed == undefined; Failed == [] ->
     ok;
-check_adr(#node{adr_failed=undefined}) ->
-    undefined;
 check_adr(#node{}) ->
     {25, linkadr_failed}.
 
-check_rxwin(#node{rxwin_failed=[]}) ->
+check_rxwin(#node{rxwin_failed=Failed}) when Failed == undefined; Failed == [] ->
     ok;
-check_rxwin(#node{rxwin_failed=undefined}) ->
-    undefined;
 check_rxwin(#node{}) ->
     {25, rxparamsetup_failed}.
 
 parse(Object) when is_map(Object) ->
-    maps:map(fun(Key, Value) -> parse_field(Key, Value) end,
+    maps:map(
+        fun
+            (eid, Value) -> parse_eid(Value, Object);
+            (Key, Value) -> parse_field(Key, Value)
+        end,
         Object).
 
 build(Object) when is_map(Object) ->
     maps:map(
         fun
             (_Key, Value) when is_map(Value) -> build(Value);
+            (eid, Value) -> build_eid(Value, Object);
             (Key, Value) -> build_field(Key, Value)
         end,
         maps:filter(
@@ -172,6 +173,13 @@ build(Object) when is_map(Object) ->
                 (_Key, undefined) -> false;
                 (_, _) -> true
             end, Object)).
+
+parse_eid(Value, _) when Value == null; Value == undefined ->
+    undefined;
+parse_eid(Value, #{entity:=Entity}) when Entity == server; Entity == connector ->
+    Value;
+parse_eid(Value, _) ->
+    lorawan_utils:hex_to_binary(Value).
 
 parse_field(_Key, Value) when Value == null; Value == undefined ->
     undefined;
@@ -189,8 +197,8 @@ parse_field(Key, Value) when Key == subid ->
     parse_bitstring(Value);
 parse_field(Key, Values) when Key == cflist ->
     lists:map(
-        fun(#{freq:=Freq}) ->
-            Freq
+        fun(#{freq:=Freq}=Map) ->
+            {Freq, parse_opt(min_datr, Map), parse_opt(max_datr, Map)}
         end, Values);
 parse_field(Key, Value) when Key == severity; Key == entity ->
     binary_to_existing_atom(Value, latin1);
@@ -244,6 +252,13 @@ parse_field(Key, #{ip:=IP, port:=Port, ver:=Ver}) when Key == ip_address ->
 parse_field(_Key, Value) ->
     Value.
 
+build_eid(undefined, _) ->
+    null;
+build_eid(Value, #{entity:=Entity}) when Entity == server; Entity == connector ->
+    Value;
+build_eid(Value, _) ->
+    lorawan_utils:binary_to_hex(Value).
+
 build_field(_Key, undefined) ->
     null;
 build_field(Key, Value) when Key == mac; Key == netid; Key == mask;
@@ -260,8 +275,12 @@ build_field(Key, Value) when Key == subid ->
     build_bitstring(Value);
 build_field(Key, Values) when Key == cflist ->
     lists:map(
-        fun(Freq) ->
-            #{freq=>Freq}
+        fun
+            ({Freq, MinDR, MaxDR}) ->
+                #{freq=>Freq, min_datr=>build_opt(MinDR), max_datr=>build_opt(MaxDR)};
+            % backwards compatibility
+            (Freq) ->
+                #{freq=>Freq}
         end, Values);
 build_field(Key, Value) when Key == severity; Key == entity ->
     atom_to_binary(Value, latin1);

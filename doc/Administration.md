@@ -19,6 +19,8 @@ not be displayed, but other Web Admin functions and the REST API will work fine.
 The management web-pages are available under `/admin`. It is a wrapper around
 the REST API described below.
 
+![alt tag](https://raw.githubusercontent.com/gotthardp/lorawan-server/master/doc/images/admin-dashboard.png)
+
 The server Dashboard shows:
  * Rolling timeline displaying recent Frames and [Events](Events.md#events).
  * Server information and a list of [Gateways](Infrastructure.md#gateways),
@@ -156,6 +158,18 @@ DELETE /api/users/backup HTTP/1.1
 
 ```HTTP
 HTTP/1.1 204 No Content
+```
+
+This enables users to create simple script for auto-configuration. For example,
+to add a new Device programmatically you can do:
+
+```python
+#!/usr/bin/env python
+import requests
+from requests.auth import HTTPDigestAuth
+payload = [{'devaddr': '00000000', 'profile':'Semtech Mote',
+    'nwkskey':'00000000000000000000000000000000', 'appskey':'00000000000000000000000000000000', 'fcntdown':0}]
+print requests.post("http://localhost:8080/api/nodes", json=payload, auth=HTTPDigestAuth('admin', 'admin'))
 ```
 
 ### Filtering
